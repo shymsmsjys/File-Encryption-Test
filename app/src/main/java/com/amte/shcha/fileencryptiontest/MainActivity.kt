@@ -1,10 +1,13 @@
 package com.amte.shcha.fileencryptiontest
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -55,17 +58,24 @@ class MainActivity : AppCompatActivity() {
             return
         }
         Log.i(TAG, "file uri = " + data!!.data)
-        val cr = contentResolver
+        var savedFileUri = encryptFile(data.data!!)
+        Log.i( TAG, "savedFileUri path = ${savedFileUri.path}")
+    }
+
+    private fun encryptFile(uri: Uri): Uri {
+        var saveFile = File(FILE_DIR, "encrypted2.mpg")
         var input: InputStream? = null
         var fout: FileOutputStream? = null
         try {
-            input = cr.openInputStream(data.data!!)
-            val secureKey: Key = SecretKeySpec(AES_KEY.toByteArray(charset("UTF-8")), "AES")
+            input = contentResolver.openInputStream(uri)
+            val secureKey: Key = SecretKeySpec(AES_KEY.toByteArray(charset("UTF-8")),
+                    "AES")
             val cipher = Cipher.getInstance("AES")
             cipher.init(Cipher.ENCRYPT_MODE, secureKey)
+
             if (input is FileInputStream) {
-                val saveFile = File(FILE_DIR, "encrypted.mpg")
-                Log.d(TAG, "file = " + saveFile.path)
+
+                Log.d(TAG, "file = ${saveFile.path}")
                 val parentFile = saveFile.parentFile
                 if (!parentFile.exists() && !parentFile.mkdirs()) {
                     Log.e(TAG, "file out: mkdirs for " + parentFile.path + " failed!")
@@ -74,8 +84,8 @@ class MainActivity : AppCompatActivity() {
                 val buffer = ByteArray(BUFFER_SIZE)
                 var size = 0
                 while (input.read(buffer).also { size = it } != -1) {
-                    cipher.doFinal(buffer)
-                    fout.write(cipher.doFinal(buffer), 0, size)
+                    fout.write(cipher.doFinal(buffer), 0, size)     // encryption
+//                    fout.write(buffer, 0, size)   // just copy
                 }
 
 //                Key secureKey = new SecretKeySpec(AES_KEY.getBytes("UTF-8"), "AES");
@@ -97,21 +107,35 @@ class MainActivity : AppCompatActivity() {
         } catch (e: IllegalBlockSizeException) {
             e.printStackTrace()
         } finally {
-            if (input != null) {
-                try {
-                    input.close()
-                } catch (e: IOException) {
-                    Log.e(TAG, "Exception caught while closing input: ", e)
-                }
+            try {
+                input?.close()
+            } catch (e: IOException) {
+                Log.e(TAG, "Exception caught while closing input: ", e)
             }
-            if (fout != null) {
-                try {
-                    fout.close()
-                } catch (e: IOException) {
-                    Log.e(TAG, "Exception caught while closing output: ", e)
-                }
+            try {
+                fout?.close()
+            } catch (e: IOException) {
+                Log.e(TAG, "Exception caught while closing output: ", e)
             }
         }
+        return Uri.fromFile(saveFile)
+    }
+
+    private fun insertMediaDb(uri: Uri) {
+        // to do.. not working
+
+        val values = ContentValues()
+//        values.apply {
+        values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+        values.put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis())
+        values.put(MediaStore.Video.Media.DATE_TAKEN, System.currentTimeMillis())
+        values.put(MediaStore.Video.Media.RELATIVE_PATH, uri.path)
+        values.put(MediaStore.Video.Media.DISPLAY_NAME, "aaaaaaa")
+//        }
+        val collection = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        Log.d(TAG, " collection = $collection")
+        val mediaUri = applicationContext.contentResolver.insert(collection, values)
+        Log.d(TAG, "mediaUri = $mediaUri")
     }
 
     private fun createFile(): File {
